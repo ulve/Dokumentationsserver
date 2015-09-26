@@ -22,17 +22,18 @@ let rec getAllFiles dir pattern =
           for d in Directory.EnumerateDirectories(dir) do
               yield! getAllFiles d pattern }
 
-type sökväg = { sökväg : string; filnamn: string }
+type documentPath = { path : string; filename: string }
 
-let convertToSökväg grund (helSökväg : string) =
-    let utanGrund = helSökväg.Replace(grund, "")
-    let s = { sökväg = utanGrund; filnamn = grund }
+let convertToDocumentPath rootPath (completePath : string) =
+    let noRoot = completePath.Replace(rootPath, "")    
+    let s = { path = Path.GetDirectoryName(noRoot); filename = Path.GetFileName(noRoot) }
     s 
 
 [<EntryPoint>]
 let main argv = 
-    getAllFiles "c:\\temp\\doc" "*.txt"     
-    |> Seq.map (convertToSökväg "c:\\temp\\doc\\")
+    let testdataFolder = @"..\..\testdata\"
+    getAllFiles testdataFolder "*.md"         
+    |> Seq.map (convertToDocumentPath testdataFolder)
     |> Seq.cast 
     |> printfn "%A"
     printfn "%A" argv

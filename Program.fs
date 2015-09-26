@@ -1,43 +1,84 @@
 ﻿// Learn more about F# at http://fsharp.org
 // See the 'F# Tutorial' project for more help.
 
+module SuperDumper
+
 open Suave
+open Suave.Types
+open Suave.Web
 open Suave.Http
 open Suave.Http.Applicatives
 open Suave.Http.Successful
-open Suave.Web
+open Suave.Http.Writers
 open System.IO
+open System
+open Logary
+open Logary.Targets
+open Logary.Suave
+open Logary.Configuration
 
-let app = 
-    choose 
-        [ GET >>= choose
-            [ path "/hello" >>= OK "Hello GET" 
-              path "/goodby" >>= OK "Godby GET" ]
-          POST >>= choose
-            [ path "/hello" >>= OK "Hello POST" 
-              path "/goodby" >>= OK "Goodby POST" ] ]
+let logManager =
+    withLogary' "DocumentationServer" (
+        withTargets [
+            Console.create Console.empty "console"
+        ]>>
+        withRules [
+            Rule.createForTarget "console"
+        ])
 
-let rec getAllFiles dir pattern =
-    seq { yield! Directory.EnumerateFiles(dir, pattern)
-          for d in Directory.EnumerateDirectories(dir) do
-              yield! getAllFiles d pattern }
+let suaveConfig =
+    { defaultConfig with
+        logger = SuaveAdapter(logManager.GetLogger "Suave") }
 
-type documentPath = { path : string; filename: string }
+module DocumentationServer = 
+    open Chiron
+    open Suave.Http
+    open Suave.Http.Applicatives
+    open Suave.Http.Successful
+    open Suave.Types
 
-let convertToDocumentPath rootPath (completePath : string) =
-    let noRoot = completePath.Replace(rootPath, "")    
-    let s = { path = Path.GetDirectoryName(noRoot); filename = Path.GetFileName(noRoot) }
-    s 
+    module DTOs = 
+        open Chiron.Operators
 
+        type DocumentPath = 
+            { path : string
+              filename : string }     
+
+            static member ToJson (d : DocumentPath) = 
+                Json.write "path" d.path
+                *> Json.write "filename" d.filename
+                                                   
+    open DTOs
+    
+    module Utils =                     
+        let rec getAllFiles dir pattern =
+            seq { yield! Directory.EnumerateFiles(dir, pattern)
+                  for d in Directory.EnumerateDirectories(dir) do
+                      yield! getAllFiles d pattern }
+
+        let convertToDocumentPath rootPath (completePath : string) =
+            let noRoot = completePath.Replace(rootPath, "")    
+            { path = Path.GetDirectoryName(noRoot); filename = Path.GetFileName(noRoot) }
+    
+        let allMdFiles ctx = async {            
+            let testdataFolder = @"..\..\testdata\"
+            let allFiles = getAllFiles testdataFolder "*.md"         
+                            |> Seq.map (convertToDocumentPath testdataFolder)
+                            |> Seq.toList
+            return! OK (allFiles |> Json.serialize |> Json.format) ctx }            
+        
+    let api =         
+        setMimeType "application/json; charset=utf-8" >>= choose [
+            path "/api/documentationserver/filelist" >>= Utils.allMdFiles
+        ]
+            
 [<EntryPoint>]
-let main argv = 
-    let testdataFolder = @"..\..\testdata\"
-    getAllFiles testdataFolder "*.md"         
-    |> Seq.map (convertToDocumentPath testdataFolder)
-    |> Seq.cast 
-    |> printfn "%A"
+let main argv =     
     printfn "%A" argv
-    startWebServer defaultConfig app
+    startWebServer suaveConfig <| 
+        choose [
+            DocumentationServer.api
+        ]
 
     0 // return an integer exit code
 

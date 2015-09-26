@@ -31,8 +31,7 @@ let convertToSökväg grund (helSökväg : string) =
 
 [<EntryPoint>]
 let main argv = 
-    getAllFiles "c:\\temp\\doc" "*.txt" 
-    //|> Seq.map (fun f -> f.Replace("c:\\temp\\doc+\\", "")) 
+    getAllFiles "c:\\temp\\doc" "*.txt"     
     |> Seq.map (convertToSökväg "c:\\temp\\doc\\")
     |> Seq.cast 
     |> printfn "%A"
